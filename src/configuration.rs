@@ -26,7 +26,7 @@ pub struct DatabaseSettings {
 }
 
 impl DatabaseSettings{
-    pub fn get_connection(&self) -> String {
+    pub fn get_connection_string(&self) -> String {
         format!("host={} dbname={} user={} password={}", self.host, self.database_name, self.username, self.password)
     }
 }

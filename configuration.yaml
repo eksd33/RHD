@@ -1,0 +1,6 @@
+
+username: "custom_name"
+password: "somepass"
+port: 1234
+host: "localhost"
+database_name: "mydb"
