@@ -2,4 +2,4 @@
 pub mod configuration;
 pub mod helpers;
 pub mod cli_parse;
-pub mod write_logic;
+pub mod db_logic;

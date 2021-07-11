@@ -11,6 +11,7 @@ clap = "2.33.3"
 config = "0.11.0"
 postgres = "0.19.1"
 url = "2.2.2"
+regex = "1"
 
 [dependencies.serde]
 features = ["derive"]

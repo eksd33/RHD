@@ -1,4 +1,5 @@
 use crate::configuration::{DatabaseSettings, get_conf};
+use crate::db_logic::{write_to_db, read_input};
 use clap::ArgMatches;
 use postgres::{NoTls,Client};
 
@@ -44,18 +45,27 @@ pub fn match_write(client: &mut Client,cli_matches: &ArgMatches){
             client.batch_execute(&query).expect("unable to create table");
         }
 
-
+    //maybe create a table just for url paths as primary key and foreign key of host in main target
+    //table 
+    };
+    let target = match cli_matches.value_of("set target"){
+        Some(target) => target,
+        None => "not defined"
     };
     let host = match cli_matches.value_of("set host"){
-        Some(host) => host,
-        None  => "not specified"
-    };
-    let stdin = cli_matches.is_present("stdin");
-    let file_to_read = match cli_matches.value_of("file"){
-        Some(file)=> file,
-        None => "not specified"
+        Some(host)=> host,
+        None => "not defined"
     };
 
+    let stdin = cli_matches.is_present("stdin");
+    
+    let file_to_read = match cli_matches.value_of("file"){
+        Some(file)=> file,
+        None => "not defined"
+    };
+    let read_contents = read_input( stdin, file_to_read).expect("Sorry there was problem processing the input: ");
+
+    write_to_db(client, read_contents, target, host).expect("fucked up writing to db");   
 }
 
 #[cfg(test)]
@@ -78,4 +88,4 @@ mod tests{
         assert_eq!(custom.username, "custom_name");
     }
 
-}
+ }

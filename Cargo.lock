@@ -9,6 +9,7 @@ dependencies = [
  "clap",
  "config",
  "postgres",
+ "regex",
  "serde 1.0.126",
  "url",
 ]
