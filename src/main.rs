@@ -1,5 +1,6 @@
 use postgres::{Client, NoTls};
-use RHD::helpers::{db_connect, check_for_table, match_write};
+use RHD::helpers::{db_connect, check_for_table};
+use RHD::db_logic::match_write;
 use RHD::cli_parse::initialize;
 
 fn main(){

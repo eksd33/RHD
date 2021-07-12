@@ -1,7 +1,14 @@
+
 use crate::configuration::{DatabaseSettings, get_conf};
-use crate::db_logic::{write_to_db, read_input};
-use clap::ArgMatches;
-use postgres::{NoTls,Client};
+use postgres::{Client, NoTls};
+use std::borrow::Borrow;
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{self, Read};
+use std::fmt;
+use std::error;
+use std::ops::Add;
+use url::{Url, ParseError};
 
 pub fn db_connect (c:Option<&str>) -> Client {
     let configuration = get_conf(c).unwrap_or_else(|_|{
@@ -29,63 +36,43 @@ pub fn check_for_table (connection: &mut  Client, table : &str) -> bool {
 }
 
 
-pub fn match_write(client: &mut Client,cli_matches: &ArgMatches){
-    if let Some(target) = cli_matches.value_of("set target"){
-        let exists = check_for_table(client, target);
-// wont let me execute with $1 in client.execute -- so this is a work-aroud 
-        let query = format!(
-        "CREATE TABLE {} (
-            id BIGSERIAL, 
-            host VARCHAR(150), 
-            url TEXT PRIMARY KEY NOT NULL,
-            status_code VARCHAR(3),
-            note TEXT
-        )", target);
-        if !exists {
-            client.batch_execute(&query).expect("unable to create table");
-        }
+type ResultReading<T> = std::result::Result<T, Box<dyn error::Error>>;
+ 
 
-    //maybe create a table just for url paths as primary key and foreign key of host in main target
-    //table 
+pub fn read_input(stdin_set: bool, file_path: &str)-> ResultReading<String>{
+    let mut string_buffer = String::new();
+    if stdin_set{
+       io::stdin().read_to_string(&mut string_buffer)?; 
+    }else if !file_path.eq("not defined"){
+        let mut file = File::open(file_path)?;
+        file.read_to_string(&mut string_buffer)?;
     };
-    let target = match cli_matches.value_of("set target"){
-        Some(target) => target,
-        None => "not defined"
-    };
-    let host = match cli_matches.value_of("set host"){
-        Some(host)=> host,
-        None => "not defined"
-    };
-
-    let stdin = cli_matches.is_present("stdin");
-    
-    let file_to_read = match cli_matches.value_of("file"){
-        Some(file)=> file,
-        None => "not defined"
-    };
-    let read_contents = read_input( stdin, file_to_read).expect("Sorry there was problem processing the input: ");
-
-    write_to_db(client, read_contents, target, host).expect("fucked up writing to db");   
+Ok(string_buffer)
 }
 
-#[cfg(test)]
-mod tests{
-    use super::*;
-    
-    #[test]
-    fn test_postgres_connection(){
-        use std::time::Duration;
 
-        let conf = Some("not_existing_config");
-        let mut client = db_connect(conf);
-        let duration = Duration::new(15,0);
-        assert!(client.is_valid(duration).is_ok());
-    }
-    #[test]
-    fn custom_config(){
-        let existing_path:Option<&str> = Some("./configuration.yaml");
-        let custom = get_conf(existing_path).expect("unable to get custom conf");
-        assert_eq!(custom.username, "custom_name");
-    }
+pub fn parse_urls(data: String, host: &str ) -> ResultReading<HashMap<Url, String>>{
+    let mut urls = HashMap::new();
+    let parsed_data: Vec<&str> = data.lines().collect();
+    let data_vec = parsed_data.iter().map(|c| c.trim().to_string()).collect::< Vec<String> >();
+    for mut line in data_vec{
+        if line.starts_with("http://") | line.starts_with("https://"){
+            ()
+        }else{
+            let tmp = format!("https://{}", line);
+            line = tmp;
+        }
+        let mut itter = line.trim().split_whitespace();
+        
+        let url = itter.next().unwrap();
+        let status_code = match itter.next(){
+            Some(status)=>status.to_string(),
+            None=>"Status code not found".to_string()
+        };
 
- }
+        let parsed = Url::parse(url).expect("error parsing url");
+        urls.entry(parsed).or_insert_with_key(|key| status_code);
+    }
+    Ok(urls)
+}
+
