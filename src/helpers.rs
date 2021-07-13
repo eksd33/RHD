@@ -51,10 +51,11 @@ Ok(string_buffer)
 }
 
 
-pub fn parse_urls(data: String, host: &str ) -> ResultReading<HashMap<Url, String>>{
+pub fn parse_urls(data: String ) -> ResultReading<HashMap<Url, String>>{
     let mut urls = HashMap::new();
     let parsed_data: Vec<&str> = data.lines().collect();
     let data_vec = parsed_data.iter().map(|c| c.trim().to_string()).collect::< Vec<String> >();
+
     for mut line in data_vec{
         if line.starts_with("http://") | line.starts_with("https://"){
             ()
@@ -71,8 +72,9 @@ pub fn parse_urls(data: String, host: &str ) -> ResultReading<HashMap<Url, Strin
         };
 
         let parsed = Url::parse(url).expect("error parsing url");
-        urls.entry(parsed).or_insert_with_key(|key| status_code);
+        urls.entry(parsed).or_insert_with_key(|key| status_code);   
     }
     Ok(urls)
 }
+
 

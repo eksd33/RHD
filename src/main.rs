@@ -1,6 +1,6 @@
 use postgres::{Client, NoTls};
 use RHD::helpers::{db_connect, check_for_table};
-use RHD::db_logic::match_write;
+use RHD::db_logic::write_logic;
 use RHD::cli_parse::initialize;
 
 fn main(){
@@ -17,7 +17,7 @@ fn main(){
         ("read",Some(read))=>{
 
         },
-        ("write", Some(write))=>{match_write(&mut client,write)},
+        ("write", Some(write))=>{write_logic(&mut client,write)},
         _ => {}
     };
 
