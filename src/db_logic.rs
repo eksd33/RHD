@@ -11,20 +11,18 @@ pub fn write_logic(client: &mut Client,cli_matches: &ArgMatches){
     if let Some(target) = cli_matches.value_of("set target"){
         let exists = check_for_table(client, target);
 // wont let me execute with $1 in client.execute -- so this is a work-aroud 
-        let query = format!(
+    let query = format!(
         "CREATE TABLE {} (
             id BIGSERIAL, 
             host VARCHAR(150), 
             url TEXT PRIMARY KEY NOT NULL,
             status_code VARCHAR(50),
-            note TEXT
+            path TEXT
         )", target);
+            
         if !exists {
             client.batch_execute(&query).expect("unable to create table");
         }
-
-    //maybe create a table just for url paths as primary key and foreign key of host in main target
-    //table 
     };
     let target = match cli_matches.value_of("set target"){
         Some(target) => target,
@@ -41,7 +39,7 @@ pub fn write_logic(client: &mut Client,cli_matches: &ArgMatches){
     let mut read_contents = read_input( stdin, file_to_read).expect("Sorry there was problem processing the input: ");
     
     let parsed_urls = parse_urls(read_contents).expect("error parse_urls");
-    //write_to_db(client, parsed_urls, target, host, "some note");
+    write_to_db(client, parsed_urls, target, host);
     
     // Display stdout as psql  
     //
@@ -53,16 +51,49 @@ pub fn write_logic(client: &mut Client,cli_matches: &ArgMatches){
 
 
 
-pub fn write_to_db(client: &mut Client, data: HashMap<Url, String>, target: &str, host_option: Option<&str>, note: &str){
+pub fn write_to_db(client: &mut Client, data: HashMap<Url, String>, target: &str, host_option: Option<&str>){
 
+    let cleanup = format!("SELECT setval(pg_get_serial_sequence('{}', 'id'), max(id)) FROM {}",target, target);
+    
     for (url, status) in data.iter(){
         let prep = match host_option {
-            Some(host) => format!("INSERT INTO {} (host,url, status_code, note) VALUES ('{}','{}','{}','{}')", target, host, url, status, note),
-            None => format!("INSERT INTO {} (host,url, status_code, note) VALUES ('{}','{}','{}','{}')", target, url.host_str().expect("error parsing host from url"), url, status, note),
+            Some(host) => format!("INSERT INTO {} (host,url, status_code, path) VALUES ('{}','{}','{}', '{}')", target, host, url, status, url.path() ),
+            None => format!("INSERT INTO {} (host,url, status_code, path) VALUES ('{}','{}','{}','{}')", target, url.host_str().expect("error parsing host from url"), url, status,url.path()),
         };
-        // TODO impl error handle for duplicate urls (primary key)
-        client.batch_execute(prep.as_str()).expect("error writing to db ");
+        let exec = client.batch_execute(prep.as_str());
+        match exec {
+            Ok(()) => (),
+            Err(error) => match error.code(){
+                    Some(sql_state_unqique_violation) if sql_state_unqique_violation.code() == "23505" => drop(client.execute(cleanup.as_str(), &[]).expect("error cleaning up")),
+                    Some(other_state) => panic!("unexpected database error sql state: {:?}", other_state),
+                    None => panic!()
+                }
+        }
     }
+
+}
+// I know about DRY 
+pub fn read_logic(client: &mut Client, cli_matches: &ArgMatches){
+    let target = match cli_matches.value_of("set target"){
+        Some(target) => target, 
+        None => "not defined"
+    }; 
+    let host = match cli_matches.value_of("set host"){
+        Some(host) => host, 
+        None => "not defined"
+    };
+    let list = cli_matches.is_present("list all");
+    
+    let mut vec_status_code:Vec<&str>;
+    let status = cli_matches.is_present("status");
+    
+    if cli_matches.is_present("status code"){
+        vec_status_code = cli_matches.values_of("status code").unwrap().collect();
+    }
+    let path = cli_matches.is_present("path");
+    let path_comb = cli_matches.is_present("path comb");
+
+
 }
 
 #[cfg(test)]

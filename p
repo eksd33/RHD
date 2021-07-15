@@ -1,10 +1,12 @@
-
 use crate::configuration::{DatabaseSettings, get_conf};
 use postgres::{Client, NoTls};
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, Read};
+use std::fmt;
 use std::error;
+use std::ops::Add;
 use url::{Url, ParseError};
 
 pub fn db_connect (c:Option<&str>) -> Client {
@@ -21,6 +23,8 @@ pub fn db_connect (c:Option<&str>) -> Client {
     (&connection_string , NoTls).expect("Failed to connect to postgres");
     client
 }
+
+//resets bigserial after drop: SELECT pg_catalog.setval(pg_get_serial_sequence('table_name', 'id'), (SELECT MAX(id) FROM table_name)+1);
 //list all tables: select tablename from pg_tables where schemaname='public';
 
 pub fn check_for_table (connection: &mut  Client, table : &str) -> bool {
