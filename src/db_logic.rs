@@ -78,22 +78,21 @@ pub fn read_logic(client: &mut Client, cli_matches: &ArgMatches){
         Some(target) => target, 
         None => "not defined"
     }; 
-    let host = match cli_matches.value_of("set host"){
-        Some(host) => host, 
-        None => "not defined"
+    let host = match cli_matches.values_of("set host"){
+        Some(host) => host.collect(), 
+        None => Vec::new(),
     };
     let list = cli_matches.is_present("list all");
     
-    let mut vec_status_code:Vec<&str>;
-    let status = cli_matches.is_present("status");
-    
-    if cli_matches.is_present("status code"){
-        vec_status_code = cli_matches.values_of("status code").unwrap().collect();
-    }
+    let vec_status_code = match cli_matches.values_of("status code"){
+        Some(v) => v.collect(), 
+        None => Vec::new(),
+    };
+
     let path = cli_matches.is_present("path");
     let path_comb = cli_matches.is_present("path comb");
 
-
+    query_builder(target, host, list, vec_status_code, path, path_comb);   
 }
 
 #[cfg(test)]

@@ -2,6 +2,7 @@
 use crate::configuration::{DatabaseSettings, get_conf};
 use postgres::{Client, NoTls};
 use std::collections::HashMap;
+use std::{iter, mem};
 use std::fs::File;
 use std::io::{self, Read};
 use std::error;
@@ -72,4 +73,98 @@ pub fn parse_urls(data: String ) -> ResultReading<HashMap<Url, String>>{
     Ok(urls)
 }
 
+pub struct Iter<I> ( bool, iter::Peekable<I>) where I: Iterator;
+pub trait IdentifyFirstLast: Iterator + Sized{
+    fn identify_first_last(self) -> Iter<Self>;
+}
 
+impl <I> IdentifyFirstLast for I where I:  Iterator{
+    fn identify_first_last(self) -> Iter<Self> {
+        Iter(true, self.peekable())
+    }
+}
+
+impl<I> Iterator for Iter<I> where I:Iterator{
+    type Item = (bool, bool, I::Item);
+
+    fn next(&mut self) -> Option<Self::Item>{
+        let first = mem::replace(&mut self.0, false);
+        self.1.next().map(|i| (first, self.1.peek().is_none(), i))
+    }
+}
+
+pub fn query_builder (target: &str, host: Vec<&str>, list: bool, status_code: Vec<&str>, path: bool, path_comb:bool)-> String{
+    let start = format!("SELECT * FROM {} WHERE ", target);
+    
+ //   println!("{:?}{}", &status_code, &status_code[0].trim_matches(&[','] as &[char]));
+    let mut status_code_query = String::new();
+    let mut host_query = String::new();
+
+    let status_code_empty = status_code.is_empty();
+    let host_empty = host.is_empty();
+
+// TODO refactor this into separate function that takes vector and identificator string 
+    if !status_code_empty{
+    for (is_frst, is_last, val) in status_code.into_iter().identify_first_last(){
+        let v = val.clone().trim().trim_matches(&[','] as &[char]);
+       if !is_last{
+        let q = format!("status_code='({})' OR ",v );
+        &status_code_query.push_str(q.as_str());
+       }else{
+        let q = format!("status_code='({})'",v );
+        &status_code_query.push_str(q.as_str());
+       } 
+    }
+    }
+    if !host_empty{
+        for (is_first, is_last, val) in host.into_iter().identify_first_last(){
+        let v = val.trim().trim_matches(&[','] as &[char]);
+        if !status_code_empty &&  is_first && !is_last {
+            let q = format!(" AND host='{}' OR ", v);
+            host_query.push_str(q.as_str());
+        }else if !is_last{
+            let q = format!("host='{}' OR ", v);
+            host_query.push_str(q.as_str());
+        }else if !status_code_empty && is_first && is_last {
+            let q = format!(" AND host='{}'", v);
+            host_query.push_str(q.as_str());
+        }else{
+            let q = format!("host='{}'", v);
+            host_query.push_str(q.as_str());
+        }
+
+        }
+    }
+    let q = format!("{}{}{}", start, status_code_query, host_query);
+    println!("{}", q);
+    q
+
+}
+
+#[cfg(test)]
+    mod tests{
+        use super::*;
+        
+        #[test]
+        fn query_building(){
+            let target = "test_target";
+            let host = vec!["test_host"];
+            let status_code = vec!["303,","404"];
+
+            let query = query_builder(target, host, false, status_code.clone(), false, false);
+
+            assert_eq!(query, String::from("SELECT * FROM test_target WHERE status_code='(303)' OR status_code='(404)' AND host='test_host'"));
+            let query = query_builder(target, Vec::new(), false, status_code.clone(), false, false);
+
+            assert_eq!(query, String::from("SELECT * FROM test_target WHERE status_code='(303)' OR status_code='(404)'"));
+
+            let host = vec!["test_host_one,", "test_host_two"];
+            let query = query_builder(target, host.clone(), false, Vec::new(), false, false );
+            assert_eq!(query, String::from("SELECT * FROM test_target WHERE host='test_host_one' OR host='test_host_two'"));
+            
+            let status_code = vec!["303,", "404", "200"];
+            let host = vec!["test_host_one," , " test_host_two", "test_host_three"];
+            let query = query_builder(target, host, false, status_code, false, false);
+            assert_eq!(query, String::from("SELECT * FROM test_target WHERE status_code='(303)' OR status_code='(404)' OR status_code='(200)' AND host='test_host_one' OR host='test_host_two' OR host='test_host_three'"))
+        }
+    }

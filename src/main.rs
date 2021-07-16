@@ -1,6 +1,6 @@
 use postgres::{Client, NoTls};
 use RHD::helpers::{db_connect, check_for_table};
-use RHD::db_logic::write_logic;
+use RHD::db_logic::{write_logic, read_logic};
 use RHD::cli_parse::initialize;
 
 fn main(){
@@ -14,9 +14,7 @@ fn main(){
 
 // proceed based on the subcommands used 
     match cli_args.subcommand(){
-        ("read",Some(read))=>{
-
-        },
+        ("read",Some(read))=>{read_logic(&mut client, read)},
         ("write", Some(write))=>{write_logic(&mut client,write)},
         _ => {}
     };
