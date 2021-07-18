@@ -52,7 +52,7 @@ As your number of targets rises with time, it will be certainly harder and harde
 
 If you use the `--list-all` flag with the `-t/--target` :
  ```
-rhd read -t test_target --list-all
+ rhd read -t test_target --list-all
  ``` 
  the RHD will return every entry in the specified target registry. 
 

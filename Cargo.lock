@@ -7,6 +7,7 @@ name = "RHD"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "cli-grid",
  "config",
  "postgres",
  "regex",
@@ -119,6 +120,12 @@ dependencies = [
  "unicode-width",
  "vec_map",
 ]
+
+[[package]]
+name = "cli-grid"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79c545bd668b1d668c6e5d204dab13f095348f6f4197343560721a0cf616c7a6"
 
 [[package]]
 name = "config"

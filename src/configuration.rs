@@ -11,7 +11,7 @@ pub fn get_conf(path: Option<&str>) -> Result<DatabaseSettings, config::ConfigEr
     let mut settings = config::Config::default();
     match settings.merge(config::File::from(file_path)) {
         Ok(conf) => conf.clone().try_into(),
-        Err(why) => return Err(why)
+        Err(why) => Err(why)
     }
 
 }

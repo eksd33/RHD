@@ -12,6 +12,7 @@ config = "0.11.0"
 postgres = "0.19.1"
 url = "2.2.2"
 regex = "1"
+cli-grid = "0.1.2"
 
 [dependencies.serde]
 features = ["derive"]

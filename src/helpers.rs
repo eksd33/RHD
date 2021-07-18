@@ -18,7 +18,7 @@ pub fn db_connect (c:Option<&str>) -> Client {
             database_name : "rhd".to_string(),                                                           }
         });
     let connection_string = configuration.get_connection_string();
-    let mut client = Client::connect
+    let client = Client::connect
     (&connection_string , NoTls).expect("Failed to connect to postgres");
     client
 }
@@ -93,9 +93,8 @@ impl<I> Iterator for Iter<I> where I:Iterator{
     }
 }
 
-pub fn query_builder (target: &str, host: Vec<&str>, list: bool, status_code: Vec<&str>, path: bool, path_comb:bool)-> String{
+pub fn query_builder (target: &str, host: Vec<&str>, status_code: Vec<&str>,  list_present: bool)-> String{
     let start = format!("SELECT * FROM {} WHERE ", target);
-    
  //   println!("{:?}{}", &status_code, &status_code[0].trim_matches(&[','] as &[char]));
     let mut status_code_query = String::new();
     let mut host_query = String::new();
@@ -105,40 +104,43 @@ pub fn query_builder (target: &str, host: Vec<&str>, list: bool, status_code: Ve
 
 // TODO refactor this into separate function that takes vector and identificator string 
     if !status_code_empty{
-    for (is_frst, is_last, val) in status_code.into_iter().identify_first_last(){
-        let v = val.clone().trim().trim_matches(&[','] as &[char]);
-       if !is_last{
-        let q = format!("status_code='({})' OR ",v );
-        &status_code_query.push_str(q.as_str());
-       }else{
-        let q = format!("status_code='({})'",v );
-        &status_code_query.push_str(q.as_str());
-       } 
+    for (_is_frst, is_last, val) in status_code.into_iter().identify_first_last(){
+        let v = val.trim().trim_matches(&[','] as &[char]);
+        if !is_last{
+            let q = format!("status_code='({})' OR ",v );
+            &status_code_query.push_str(q.as_str());
+        }else{
+            let q = format!("status_code='({})'",v );
+            &status_code_query.push_str(q.as_str());
+        } 
     }
     }
     if !host_empty{
         for (is_first, is_last, val) in host.into_iter().identify_first_last(){
         let v = val.trim().trim_matches(&[','] as &[char]);
-        if !status_code_empty &&  is_first && !is_last {
-            let q = format!(" AND host='{}' OR ", v);
-            host_query.push_str(q.as_str());
-        }else if !is_last{
-            let q = format!("host='{}' OR ", v);
-            host_query.push_str(q.as_str());
-        }else if !status_code_empty && is_first && is_last {
-            let q = format!(" AND host='{}'", v);
-            host_query.push_str(q.as_str());
-        }else{
-            let q = format!("host='{}'", v);
-            host_query.push_str(q.as_str());
-        }
+            if !status_code_empty &&  is_first && !is_last {
+                let q = format!(" AND host='{}' OR ", v);
+                host_query.push_str(q.as_str());
+            }else if !is_last{
+                let q = format!("host='{}' OR ", v);
+                host_query.push_str(q.as_str());
+            }else if !status_code_empty && is_first && is_last {
+                let q = format!(" AND host='{}'", v);
+                host_query.push_str(q.as_str());
+            }else{
+                let q = format!("host='{}'", v);
+                host_query.push_str(q.as_str());
+            }
 
         }
     }
-    let q = format!("{}{}{}", start, status_code_query, host_query);
-    println!("{}", q);
-    q
-
+    if list_present{
+        return format!("SELECT * FROM {}", target);
+    }else{
+        return format!("{}{}{}", start, status_code_query, host_query)
+    }
+    
+    
 }
 
 #[cfg(test)]
@@ -151,20 +153,20 @@ pub fn query_builder (target: &str, host: Vec<&str>, list: bool, status_code: Ve
             let host = vec!["test_host"];
             let status_code = vec!["303,","404"];
 
-            let query = query_builder(target, host, false, status_code.clone(), false, false);
+            let query = query_builder(target, host, status_code.clone(), false);
 
             assert_eq!(query, String::from("SELECT * FROM test_target WHERE status_code='(303)' OR status_code='(404)' AND host='test_host'"));
-            let query = query_builder(target, Vec::new(), false, status_code.clone(), false, false);
+            let query = query_builder(target, Vec::new(),  status_code.clone(), false );
 
             assert_eq!(query, String::from("SELECT * FROM test_target WHERE status_code='(303)' OR status_code='(404)'"));
 
             let host = vec!["test_host_one,", "test_host_two"];
-            let query = query_builder(target, host.clone(), false, Vec::new(), false, false );
+            let query = query_builder(target, host.clone(), Vec::new(), false);
             assert_eq!(query, String::from("SELECT * FROM test_target WHERE host='test_host_one' OR host='test_host_two'"));
             
             let status_code = vec!["303,", "404", "200"];
             let host = vec!["test_host_one," , " test_host_two", "test_host_three"];
-            let query = query_builder(target, host, false, status_code, false, false);
+            let query = query_builder(target, host, status_code, false);
             assert_eq!(query, String::from("SELECT * FROM test_target WHERE status_code='(303)' OR status_code='(404)' OR status_code='(200)' AND host='test_host_one' OR host='test_host_two' OR host='test_host_three'"))
         }
     }
