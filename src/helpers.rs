@@ -68,7 +68,7 @@ pub fn parse_urls(data: String ) -> ResultReading<HashMap<Url, String>>{
         };
 
         let parsed = Url::parse(url).expect("error parsing url");
-        urls.entry(parsed).or_insert_with_key(|key| status_code);   
+        urls.entry(parsed).or_insert_with_key(|_key| status_code);   
     }
     Ok(urls)
 }
@@ -93,14 +93,22 @@ impl<I> Iterator for Iter<I> where I:Iterator{
     }
 }
 
-pub fn query_builder (target: &str, host: Vec<&str>, status_code: Vec<&str>,  list_present: bool)-> String{
-    let start = format!("SELECT * FROM {} WHERE ", target);
- //   println!("{:?}{}", &status_code, &status_code[0].trim_matches(&[','] as &[char]));
-    let mut status_code_query = String::new();
-    let mut host_query = String::new();
+pub fn query_builder (target: &str, host: Vec<&str>, status_code: Vec<&str>,ids: Vec<&str>,  print_all: bool, delete: bool)-> String{
+    let start:String;
 
     let status_code_empty = status_code.is_empty();
     let host_empty = host.is_empty();
+    let ids_empty = ids.is_empty();
+
+    if delete{
+        start = format!("DELETE FROM {} WHERE ", target);
+    } else {
+        start = format!("SELECT * FROM {} WHERE ", target)
+    };
+ //   println!("{:?}{}", &status_code, &status_code[0].trim_matches(&[','] as &[char]));
+    let mut status_code_query = String::new();
+    let mut host_query = String::new();
+    let mut id_query = String::new();
 
 // TODO refactor this into separate function that takes vector and identificator string 
     if !status_code_empty{
@@ -121,21 +129,51 @@ pub fn query_builder (target: &str, host: Vec<&str>, status_code: Vec<&str>,  li
             if !status_code_empty &&  is_first && !is_last {
                 let q = format!(" AND host='{}' OR ", v);
                 host_query.push_str(q.as_str());
-            }else if !is_last{
+            }
+            else if !is_last{
                 let q = format!("host='{}' OR ", v);
                 host_query.push_str(q.as_str());
-            }else if !status_code_empty && is_first && is_last {
+            }
+            else if !status_code_empty && is_first && is_last {
                 let q = format!(" AND host='{}'", v);
                 host_query.push_str(q.as_str());
-            }else{
+            }
+            else{
                 let q = format!("host='{}'", v);
                 host_query.push_str(q.as_str());
             }
 
         }
     }
-    if list_present{
+
+    if !ids_empty {
+        for (is_first, is_last, val) in ids.into_iter().identify_first_last(){
+            let v = val.trim().trim_matches(&[','] as &[char]);
+
+            if (!status_code_empty || !host_empty) && is_first && !is_last{
+                let q = format!(" AND id='{}' OR ", v);
+                id_query.push_str(q.as_str());
+            }
+            else if !is_last{
+                let q = format!("id='{}' OR ", v);
+                id_query.push_str(q.as_str());
+            }
+            else if (!status_code_empty || !host_empty) && is_first && is_last {
+                let q = format!(" AND id='{}'", v);
+                id_query.push_str(q.as_str());
+            }
+            else {
+                let q = format!("id='{}'", v);
+                id_query.push_str(q.as_str());
+            }
+
+        }
+    }
+
+    if print_all{
         return format!("SELECT * FROM {}", target);
+    }else if delete{
+        return format!("{}{}{}{}", start, status_code_query, host_query, id_query)
     }else{
         return format!("{}{}{}", start, status_code_query, host_query)
     }
@@ -153,20 +191,38 @@ pub fn query_builder (target: &str, host: Vec<&str>, status_code: Vec<&str>,  li
             let host = vec!["test_host"];
             let status_code = vec!["303,","404"];
 
-            let query = query_builder(target, host, status_code.clone(), false);
+            let query = query_builder(target, host, status_code.clone(),Vec::new(), false, false);
 
             assert_eq!(query, String::from("SELECT * FROM test_target WHERE status_code='(303)' OR status_code='(404)' AND host='test_host'"));
-            let query = query_builder(target, Vec::new(),  status_code.clone(), false );
+            let query = query_builder(target, Vec::new(),  status_code.clone(),Vec::new(),false,false);
 
             assert_eq!(query, String::from("SELECT * FROM test_target WHERE status_code='(303)' OR status_code='(404)'"));
 
             let host = vec!["test_host_one,", "test_host_two"];
-            let query = query_builder(target, host.clone(), Vec::new(), false);
+            let query = query_builder(target, host.clone(), Vec::new(),Vec::new(), false, false);
             assert_eq!(query, String::from("SELECT * FROM test_target WHERE host='test_host_one' OR host='test_host_two'"));
             
             let status_code = vec!["303,", "404", "200"];
             let host = vec!["test_host_one," , " test_host_two", "test_host_three"];
-            let query = query_builder(target, host, status_code, false);
+            let query = query_builder(target, host, status_code,Vec::new(), false,false);
             assert_eq!(query, String::from("SELECT * FROM test_target WHERE status_code='(303)' OR status_code='(404)' OR status_code='(200)' AND host='test_host_one' OR host='test_host_two' OR host='test_host_three'"))
+        }
+        #[test]
+        fn drop_query_building(){
+        let target = "test_target";
+        let host = vec!["test_host", "test_host_one"];
+        let status_code = vec!["303","404", "200"];
+        let ids = vec!["1", "2", "3"];
+        let query = query_builder(target, host.clone(), status_code, ids, false,true);
+
+        assert_eq!(query, String::from("DELETE FROM test_target WHERE status_code='(303)' OR status_code='(404)' OR status_code='(200)' AND host='test_host' OR host='test_host_one' AND id='1' OR id='2' OR id='3'"));
+
+        let ids = vec!["1","2,"];
+        let query = query_builder(target, host.clone(), Vec::new(), ids, false, true);
+        assert_eq!(query, String::from("DELETE FROM test_target WHERE host='test_host' OR host='test_host_one' AND id='1' OR id='2'"));
+
+        let ids = vec!["1"];
+        let query = query_builder(target, Vec::new() , Vec::new(), ids, false,true);
+        assert_eq!(query, String::from("DELETE FROM test_target WHERE id='1'"));
         }
     }

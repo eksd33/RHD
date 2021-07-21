@@ -68,7 +68,8 @@ pub fn write_to_db(client: &mut Client, data: HashMap<Url, String>, target: &str
 
 }
 
-pub struct PulledData{
+    pub struct PulledData{
+    id: i64,
     host: String, 
     url: String,
     status_code: String,
@@ -92,31 +93,32 @@ pub fn read_logic(client: &mut Client, cli_matches: &ArgMatches){
         Some(v) => v.collect(), 
         None => Vec::new(),
     };
-
+    
     let list_present = cli_matches.is_present("list");
     let path_present = cli_matches.is_present("path");
     let url_present = cli_matches.is_present("url");
     let host_present = cli_matches.is_present("set host");
     let target_present = cli_matches.is_present("set target");
+    let path_url_host_are_off = !path_present && !url_present && !host_present;
+    // the print all could be separated from the query_builder function call ... is it woth it tho? 
+    let print_all = path_url_host_are_off && target_present;
 
     if url_present && !list_present && !host_present && vec_status_code.is_empty(){
         println!(" Url flag has to be used with at least one other flag: --list -h/--host, --status-code");
         return
-    }
+    };
 
-    let query = query_builder(target, host, vec_status_code, list_present );
-    let path_url_host_are_off = !path_present && !url_present && !host_present;
+    let query = query_builder(target, host, vec_status_code,Vec::new(), print_all, false);
 
     let mut grid_cli_vec = vec![
         Row::new(vec![
+        Cell::new("Id".into(),1),
         Cell::new("Host".into(), 1),
-        Cell::new("Url".into(), 1),
         Cell::new("Status code".into(), 1),
         Cell::new("Path".into(), 1),
         ])
     ];
     let mut max_width_row = 1;
-
 //
 //
 // TODO REPLACE THIS IF ELSE MESS WITH SOME SWITCH / MATCH GUARD; 
@@ -130,36 +132,51 @@ pub fn read_logic(client: &mut Client, cli_matches: &ArgMatches){
             io::stdout().write_all(row_t.as_bytes()).expect("Failed writing stdout");}
     }else if list_present && url_present {
         let url_query = format!("SELECT url FROM {}", target);
+        
         for row in client.query(url_query.as_str(),&[]).expect("Failed querying the database"){
             let mut row_u: String = row.get(0);
             row_u.push_str("\n");
             io::stdout().write_all(row_u.as_bytes()).expect("Failed writing stdout");
-        } 
+        }
+    // TODO Could implement only when the --list is present the ID will be shown 
+    }
+    else if list_present && path_present{
+        let path_query = format!("SELECT path FROM {}", target);
     
+        for row in client.query(path_query.as_str(), &[]).expect("Failed querying database"){
+            let mut row_p:String = row.get(0);
+            row_p.push_str("\n");
+            io::stdout().write_all(row_p.as_bytes()).expect("Failed writing to stdout");
+        }
     }else {
         println!("{}", query);
         for row in &client.query(query.as_str(), &[]).unwrap(){
             let row_data = PulledData {
+                id: row.get(0),
                 host: row.get(1),
                 url: row.get(2),
                 status_code: row.get(3),
                 path: row.get(4)
             };
             if !path_present && !url_present {
-                let len_of_url = row_data.url.chars().count();
+                let len_of_url = row_data.host.chars().count();
                 
                 let grid_row = Row::new(vec![
+                    Cell::new(row_data.id.to_string(),1),
                     Cell::new(row_data.host.into(), 1),
-                    Cell::new(row_data.url.into(), 1),
                     Cell::new(row_data.status_code.into(), 1),
                     Cell::new(row_data.path.into(), 1),
                 ]);
 
                 if len_of_url > max_width_row { max_width_row = len_of_url};
                 grid_cli_vec.push(grid_row);
-            }else if path_present && !url_present {
-                
-            }else if url_present && !list_present {
+            }
+            else if path_present && !url_present {
+                let mut filtered_row_p: String = row.get("path");
+                filtered_row_p.push_str("\n");
+                io::stdout().write_all(filtered_row_p.as_bytes()).expect("Failed writing stdout");
+            }
+            else if url_present && !list_present {
                 let mut filtered_row_u:String = row.get("url");
                 filtered_row_u.push_str("\n");
                 io::stdout().write_all(filtered_row_u.as_bytes()).expect("Failed writing stdout");
@@ -168,11 +185,13 @@ pub fn read_logic(client: &mut Client, cli_matches: &ArgMatches){
     }
     
     if grid_cli_vec.len() > 1 {
-
+    if max_width_row < 21 {max_width_row = 21;};
+    println!("{}", max_width_row);
     let grid = Grid::builder(grid_cli_vec)
         .default_h_align(HAlign::Center)
         .default_blank_char(' ')
         .column_width(max_width_row)
+        .padding_size(3)
         .build();
     println!("{}", grid);
 
@@ -180,6 +199,60 @@ pub fn read_logic(client: &mut Client, cli_matches: &ArgMatches){
     
 }
 
+pub fn mod_logic(client: &mut Client, cli_matches: &ArgMatches){
+    let target = cli_matches.value_of("set target").expect("Target name has to be present");
+    
+    if !check_for_table(client,target){
+        println!("Sorry that target is not in the database. Try running: rhd read --list ");
+        return
+    }
+    
+    let host = match cli_matches.values_of("set host"){
+        Some(v) => v.collect(),
+        None => Vec::new(),
+    };
+
+    let status_code = match cli_matches.values_of("status code"){
+        Some(v) => v.collect(),
+        None => Vec::new(),
+    };
+
+    let ids = match cli_matches.values_of("id"){
+        Some(v) => v.collect(),
+        None => Vec::new(),
+    };
+
+    let delete_present = cli_matches.is_present("delete");
+    let path_comb_present = cli_matches.is_present("path comb");
+    let host_status_code_ids_notpresent =  !cli_matches.is_present("set host") && !cli_matches.is_present("status_code") && !cli_matches.is_present("id");
+
+    if delete_present && ! host_status_code_ids_notpresent {
+        let query = query_builder(target, host, status_code, ids, false,delete_present);
+        println!("{}", query);
+
+        //let row_modified = client.execute(query.as_str(), &[]).expect("Error modifying database");
+    }
+    if delete_present && host_status_code_ids_notpresent{
+        println!("Please confirm the decision to delete the {} target by by typing: y/Y or: yes/YES", target);
+        let mut user_input = String::new();
+        io::stdin().read_line(&mut user_input).expect("Invalid UTF-8 data");
+        
+        let user_agrees = user_input.trim().eq_ignore_ascii_case("yes") || user_input.trim().eq_ignore_ascii_case("y");
+    
+        if user_input.is_empty(){
+            println!("If you wish to delete the target you have to confirm the decision by either typing: y/Y  or: yes/YES");
+            return
+        }
+
+        if !user_agrees{
+            println!("Aborting");
+            return 
+        }
+
+        let query = format!("DROP TABLE {}", target);
+        println!("{}", query);
+    }
+}
 
 #[cfg(test)]
 mod tests{

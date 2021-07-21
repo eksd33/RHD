@@ -21,9 +21,9 @@ is an simple database cli client written in Rust.
 
 The main idea behind the RHD is the constant frustration with all of the different files you usually create while doing a recon on your target. That + me wanting to create something in Rust as an exercise lead me to RHD.
 
-The RHD has couple of modes
+The RHD has couple of sub-commands: **write**, **read**, **mod**
 
-**RHD write**:
+### RHD write:
  _____________
  This mode allows you to import the recon data either through piping the `stdout` of other programs directly or specifying already existing file directly. 
 
@@ -44,15 +44,15 @@ rhd write -t test_host --host test_host_name --stdin
 all urls that will be imported regardless of the url will have the `test_host_name` as their host in RHD. 
 ____________
 _____________
-**RHD read**
+### RHD read:
 
 As the name may suggest the read mode allows the read of the database. This is done in couple different ways and flag combinations. 
 
 As your number of targets rises with time, it will be certainly harder and harder for you to remember all of them. Now you don't have to! Simply ask the RHD with `rhd read --list-all` and the database will return every target created. 
 
-If you use the `--list-all` flag with the `-t/--target` :
+If you use the `--list` flag with the `-t/--target` :
  ```
-rhd read -t test_target --list-all
+rhd read -t test_target --list
  ``` 
  the RHD will return every entry in the specified target registry. 
 
@@ -73,5 +73,35 @@ and tag the `--url` flag at the end, then instead of getting result with all of 
 
 To list every `url` in the particular target we can simply use the `--list-all` with `--url` 
 ```
-rhd read --list-all --url -t test_target
+rhd read --list --url -t test_target
 ```
+___________________
+___________________
+
+### RHD mod:
+
+RHD mod - allows you to modify the already existing entries in the database. 
+
+**Delete**
+One of the most useful function the **mod** allows is to permanently delete entries or whole targets
+```
+rhd mod -t test_target --status-code 404 -h test_host --delete
+```
+
+The scope is dictated with the filters. Testing the scope with **read** can be useful way of checking/preparing the right combination of filters before you accidentally delete entries. 
+
+The demonstrated code used above would delete any entry that has status code of *404* and host set to *test_host*. 
+
+If you tried the **read** functionality, you certainly noticed the `id` column. The **ID** value can be used for the entry you wish to modify without specifying whole bunch of redundant arguments. 
+
+One more thing in regards to the **delete** functionality. If you wish to delete whole target. You can do so with: 
+```
+rhd mod -t target_to_delete --delete
+```
+If you specify only the target name and `delete` flag you can delete the whole target and every entry it contains. As a precaution the RHD will ask you to confirm your choice by typing either **y/Y** or **yes/YES** only after you agreed with the deletion the RHD will proceed. 
+
+__________________
+
+**Path Combination**
+
+To be implemented
