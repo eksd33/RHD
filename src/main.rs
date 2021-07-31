@@ -1,7 +1,7 @@
 use postgres::{Client, NoTls};
-use RHD::helpers::{db_connect, check_for_table};
-use RHD::db_logic::{write_logic, read_logic, mod_logic};
-use RHD::cli_parse::initialize;
+use rhd::helpers::{db_connect, check_for_table};
+use rhd::db_logic::{write_logic, read_logic, mod_logic};
+use rhd::cli_parse::initialize;
 
 fn main(){
 

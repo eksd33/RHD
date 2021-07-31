@@ -1,9 +1,10 @@
 [package]
 edition = "2018"
-name = "RHD"
+name = "rhd"
 version = "0.1.0"
+
 [[bin]]
-name = "RHD"
+name = "rhd"
 path = "./src/main.rs"
 
 [dependencies]

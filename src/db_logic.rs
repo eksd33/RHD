@@ -59,7 +59,19 @@ pub fn write_to_db(client: &mut Client, data: HashMap<Url, String>, target: &str
         match exec {
             Ok(()) => (),
             Err(error) => match error.code(){
-                    Some(sql_state_unqique_violation) if sql_state_unqique_violation.code() == "23505" => {client.execute(cleanup.as_str(), &[]).expect("error cleaning up");},
+                    Some(sql_state_unqique_violation) if sql_state_unqique_violation.code() == "23505" => {
+                        client.execute(cleanup.as_str(), &[]).expect("error cleaning up");
+                        
+                        let probe = format!("SELECT status_code FROM {} WHERE url='{}'", target, url);
+                        let status_check = client.query_one(probe.as_str(),&[]).expect("error fetching status_code check");
+                        let old_status: String = status_check.get("status_code");
+                        
+                        if !old_status.eq(status){
+                            let update_query = format!("UPDATE {} SET status_code='{}' WHERE url='{}'", target, status, url);
+                            client.execute(update_query.as_str(), &[]).expect("error updating database");
+
+                        }
+                    },
                     Some(other_state) => panic!("unexpected database error sql state: {:?}", other_state),
                     None => panic!()
                 }
@@ -78,8 +90,19 @@ pub fn write_to_db(client: &mut Client, data: HashMap<Url, String>, target: &str
 
 pub fn read_logic(client: &mut Client, cli_matches: &ArgMatches){
     let target =  cli_matches.value_of("set target").unwrap_or("not defined");
+    
+    let list_present = cli_matches.is_present("list");
+    let path_present = cli_matches.is_present("path");
+    let url_present = cli_matches.is_present("url");
+    let status_code_present = cli_matches.is_present("status code");
+    let host_present = cli_matches.is_present("set host");
+    let target_present = cli_matches.is_present("set target");
+    let path_host_status_are_off = !path_present && !host_present && !status_code_present;
+    // the print all could be separated from the query_builder function call ... is it woth it tho? 
+    let print_all = path_host_status_are_off && target_present && !url_present;
 
-    if !check_for_table(client, target){
+    
+    if host_present && !check_for_table(client, target){
         println!("Sorry that target is not in the database. Try running: rhd read --list ");
         return 
     }
@@ -94,21 +117,15 @@ pub fn read_logic(client: &mut Client, cli_matches: &ArgMatches){
         None => Vec::new(),
     };
     
-    let list_present = cli_matches.is_present("list");
-    let path_present = cli_matches.is_present("path");
-    let url_present = cli_matches.is_present("url");
-    let host_present = cli_matches.is_present("set host");
-    let target_present = cli_matches.is_present("set target");
-    let path_url_host_are_off = !path_present && !url_present && !host_present;
-    // the print all could be separated from the query_builder function call ... is it woth it tho? 
-    let print_all = path_url_host_are_off && target_present;
 
     if url_present && !list_present && !host_present && vec_status_code.is_empty(){
         println!(" Url flag has to be used with at least one other flag: --list -h/--host, --status-code");
         return
-    };
+    };  
 
     let query = query_builder(target, host, vec_status_code,Vec::new(), print_all, false);
+
+    //println!("{}", query);
 
     let mut grid_cli_vec = vec![
         Row::new(vec![
@@ -124,32 +141,46 @@ pub fn read_logic(client: &mut Client, cli_matches: &ArgMatches){
 // TODO REPLACE THIS IF ELSE MESS WITH SOME SWITCH / MATCH GUARD; 
 //
 //
-    if list_present  && path_url_host_are_off && !target_present{
-    // could replace this if with query.eq("SELECT * FROM not defined");
-        for row in client.query("SELECT tablename FROM pg_tables WHERE schemaname='public'", &[]).unwrap(){
-            let mut row_t:String = row.get(0);
-            row_t.push_str("\n");
-            io::stdout().write_all(row_t.as_bytes()).expect("Failed writing stdout");}
-    }else if list_present && url_present {
-        let url_query = format!("SELECT url FROM {}", target);
-        
-        for row in client.query(url_query.as_str(),&[]).expect("Failed querying the database"){
-            let mut row_u: String = row.get(0);
-            row_u.push_str("\n");
-            io::stdout().write_all(row_u.as_bytes()).expect("Failed writing stdout");
+    if list_present {
+        if path_host_status_are_off && !target_present && !url_present{
+        // could replace this if with query.eq("SELECT * FROM not defined");
+            for row in client.query("SELECT tablename FROM pg_tables WHERE schemaname='public'", &[]).unwrap(){
+                let mut row_t:String = row.get(0);
+                row_t.push_str("\n");
+                io::stdout().write_all(row_t.as_bytes()).expect("Failed writing stdout");}
         }
-    // TODO Could implement only when the --list is present the ID will be shown 
+        else if url_present {
+            let url_query = format!("SELECT url FROM {}", target);
+            
+            for row in client.query(url_query.as_str(),&[]).expect("Failed querying the database"){
+                let mut row_u: String = row.get(0);
+                row_u.push_str("\n");
+                io::stdout().write_all(row_u.as_bytes()).expect("Failed writing stdout");
+            }
+        // TODO Could implement only when the --list is present the ID will be shown 
+        }
+        else if path_present{
+            let path_query = format!("SELECT path FROM {}", target);
+
+            for row in client.query(path_query.as_str(), &[]).expect("Failed querying database"){
+                let mut row_p:String = row.get(0);
+                row_p.push_str("\n");
+                io::stdout().write_all(row_p.as_bytes()).expect("Failed writing to stdout");
+            }
+        }
+        else if status_code_present {
+            let status_url_query = format!("SELECT url, status_code FROM {}", target);
+
+            for row in client.query(status_url_query.as_str(), &[]).expect("Failed querying database"){
+                let row_u:String = row.get(0);
+                let row_s:String = row.get(1);
+                let mut status_url_line = format!("{}    [{}]", row_u, row_s);
+                status_url_line.push_str("\n");
+                io::stdout().write_all(status_url_line.as_bytes()).expect("Failed writing to stdout");
+            }
+        }
     }
-    else if list_present && path_present{
-        let path_query = format!("SELECT path FROM {}", target);
-    
-        for row in client.query(path_query.as_str(), &[]).expect("Failed querying database"){
-            let mut row_p:String = row.get(0);
-            row_p.push_str("\n");
-            io::stdout().write_all(row_p.as_bytes()).expect("Failed writing to stdout");
-        }
-    }else {
-        println!("{}", query);
+    else {
         for row in &client.query(query.as_str(), &[]).unwrap(){
             let row_data = PulledData {
                 id: row.get(0),
@@ -172,12 +203,12 @@ pub fn read_logic(client: &mut Client, cli_matches: &ArgMatches){
                 grid_cli_vec.push(grid_row);
             }
             else if path_present && !url_present {
-                let mut filtered_row_p: String = row.get("path");
+                let mut filtered_row_p: String = row_data.path;
                 filtered_row_p.push_str("\n");
                 io::stdout().write_all(filtered_row_p.as_bytes()).expect("Failed writing stdout");
             }
-            else if url_present && !list_present {
-                let mut filtered_row_u:String = row.get("url");
+            else if url_present && !path_present {
+                let mut filtered_row_u:String = row_data.url;
                 filtered_row_u.push_str("\n");
                 io::stdout().write_all(filtered_row_u.as_bytes()).expect("Failed writing stdout");
             }
@@ -186,7 +217,6 @@ pub fn read_logic(client: &mut Client, cli_matches: &ArgMatches){
     
     if grid_cli_vec.len() > 1 {
     if max_width_row < 21 {max_width_row = 21;};
-    println!("{}", max_width_row);
     let grid = Grid::builder(grid_cli_vec)
         .default_h_align(HAlign::Center)
         .default_blank_char(' ')
@@ -224,13 +254,14 @@ pub fn mod_logic(client: &mut Client, cli_matches: &ArgMatches){
 
     let delete_present = cli_matches.is_present("delete");
     let path_comb_present = cli_matches.is_present("path comb");
-    let host_status_code_ids_notpresent =  !cli_matches.is_present("set host") && !cli_matches.is_present("status_code") && !cli_matches.is_present("id");
+    let host_status_code_ids_notpresent =  !cli_matches.is_present("set host") && !cli_matches.is_present("status code") && !cli_matches.is_present("id");
 
-    if delete_present && ! host_status_code_ids_notpresent {
+    if delete_present && !host_status_code_ids_notpresent {
         let query = query_builder(target, host, status_code, ids, false,delete_present);
-        println!("{}", query);
 
-        //let row_modified = client.execute(query.as_str(), &[]).expect("Error modifying database");
+        let row_modified = client.execute(query.as_str(), &[]).expect("Error modifying database");
+
+        println!("Number of row modified: {}",row_modified);
     }
     if delete_present && host_status_code_ids_notpresent{
         println!("Please confirm the decision to delete the {} target by by typing: y/Y or: yes/YES", target);
@@ -249,8 +280,8 @@ pub fn mod_logic(client: &mut Client, cli_matches: &ArgMatches){
             return 
         }
 
-        let query = format!("DROP TABLE {}", target);
-        println!("{}", query);
+        let delete_target = format!("DROP TABLE {}", target);
+        client.execute(delete_target.as_str(), &[]).expect("Error deleting target");
     }
 }
 
